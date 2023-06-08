@@ -1,5 +1,7 @@
 #include "socket.hpp"
 
+#include <fcntl.h>
+
 /**
  * @class Socket
  * 
@@ -175,6 +177,23 @@ namespace emane_relay {
     return newSocket;
   }
 
+  int Socket::read_socket(char &buf, int len)
+  {
+    char buffer[len];
+    bzero(buffer, len);
+
+    int bRecv = (int)recv(sock_, buffer, len-1, 0);
+
+    if(bRecv < 0)
+    {
+      // fail to recv
+      return -1;
+    }
+
+    // success
+    return bRecv;
+  }
+
   int Socket::write_socket(const char* msg)
   {
     int len = (int)strlen(msg);
@@ -187,6 +206,32 @@ namespace emane_relay {
 
     // success
     return 0;
+  }
+
+  int Socket::set_blocking()
+  {
+    long status = fcntl(sock_, F_GETFL, NULL);
+
+    if(status < 0) { return -1; }
+
+    status &= (~O_NONBLOCK);
+    status = fcntl(sock_, F_SETFL, status);
+
+    int retVal = (status < 0) ? -1 : 0;
+    return retVal;
+  }
+
+  int Socket::set_nblocking()
+  {
+    long status = fcntl(sock_, F_GETFL, NULL);
+
+    if(status < 0) { return -1; }
+
+    status |= (O_NONBLOCK);
+    status = fcntl(sock_, F_SETFL, status);
+
+    int retVal = (status < 0) ? -1 : 0;
+    return retVal;
   }
 
   int Socket::shutdown(int how)
