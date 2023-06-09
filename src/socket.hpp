@@ -1,12 +1,11 @@
 #ifndef EMANERELAY_SOCKET_H_
 #define EMANERELAY_SOCKET_H_
 
-#include <string>
 #include <netdb.h>
-#include <unistd.h>
-
+#include <string>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <unistd.h>
 
 namespace emane_relay{
   class Socket {

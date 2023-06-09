@@ -2,14 +2,15 @@
 
 #include <fcntl.h>
 
-/**
- * @class Socket
- * 
- * @brief Socket service provider
- * 
- * Socket class based on https://github.com/KMakowsky/Socket.cpp
- */
 namespace emane_relay {
+
+  /**
+   * @class Socket
+   * 
+   * @brief Socket service provider
+   * 
+   * Socket class based on https://github.com/KMakowsky/Socket.cpp
+   */
   Socket::Socket():
     sock_(-1),
     sockAddr_(""),
@@ -17,7 +18,11 @@ namespace emane_relay {
   {}
 
   Socket::~Socket()
-  {}
+  {
+    // Shutdown socket and close
+    ::shutdown(sock_, SHUT_RDWR);
+    ::close(sock_);
+  }
 
   int Socket::create(const int domain, const int type, const int protocol)
   {

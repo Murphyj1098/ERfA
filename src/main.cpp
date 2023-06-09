@@ -1,7 +1,10 @@
+#include <getopt.h>
+#include <unistd.h>
+
 #include <iostream>
 #include <vector>
-#include <getopt.h>
-#include "socket/socket.hpp"
+
+#include "relay.hpp"
 
 namespace {
   const std::string VERSION{"v0.0.1"};
@@ -12,6 +15,7 @@ namespace {
     std::cout<<std::endl;
   }
 }
+
 int main(int argc, char * argv[]) {
   // Parse startup arguments
   // required args:
@@ -35,7 +39,7 @@ int main(int argc, char * argv[]) {
     {0,           0, nullptr,   0}
   };
 
-  std::string sOptString{"hdl:f:"};
+  std::string sOptString{"hdvl:f:"};
 
   int iOption{};
   int iOptionIndex{};
@@ -54,8 +58,8 @@ int main(int argc, char * argv[]) {
 
       case 'l':
         // TODO: need to convert optarg to int (see EMANE::Utils::ParameterConvert)
-        std::cout<<"loglevel: Not Yet Implemented"<<std::endl;
-        return 1;
+        std::cerr<<"loglevel: Not Yet Implemented"<<std::endl;
+        return EXIT_SUCCESS;
 
       case 'f':
         sLogFile = optarg;
@@ -74,14 +78,40 @@ int main(int argc, char * argv[]) {
         break;
 
       default:
-        return -1;
+        return EXIT_FAILURE;
     }
   }
 
-  // Set up handlers for graceful exit
+  // Daemonize process
+  if(bDaemonize)
+  {
+    if(sLogFile.empty() && iLogLevel != 0)
+    {
+      std::cerr<<"Program cannot daemonize, log level must be 0 if logging to stdout"<<std::endl;
+      return EXIT_FAILURE;
+    }
 
-  // Create thread for receiving socket (AF_UNIX)
-  // Create thread for sending socket (AF_INET)
+    if(daemon(0,1))
+    {
+      std::cerr<<"unable to daemonize"<<std::endl;
+      return EXIT_FAILURE;
+    }
+  }
 
-  return 0;
+  // TODO: Set up logfile / logger
+  // TODO: Create PID File
+
+
+  // Start main application
+  emane_relay::Relay * Application = new emane_relay::Relay();
+
+  Application->doInit();
+  Application->doStart();
+
+  // NOTE: Application exit signal handlers here
+
+  Application->doStop();
+  Application->doDestroy();
+
+  return EXIT_SUCCESS;
 }
