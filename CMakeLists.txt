@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
-project(emane-relay)
+project(emanerelayd)
 
 add_subdirectory(src)
+
+# install(TARGETS ${PROJECT_NAME})

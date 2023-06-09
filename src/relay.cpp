@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+#include "logger.hpp"
+
 namespace emane_relay {
 
   /**
@@ -9,7 +11,8 @@ namespace emane_relay {
    * 
    * @brief Main application class
    */
-  Relay::Relay()
+  Relay::Relay(NEMId id) :
+  id_(id)
   {}
 
   Relay::~Relay()
@@ -17,16 +20,17 @@ namespace emane_relay {
 
   void Relay::doInit()
   {
-    std::cout<<"Doing initialization"<<std::endl;
+    std::cout<<"Doing initialization for NEM-"<<id_<<std::endl;
 
-    // Set up rx and tx threads
+    // Set up ARGoSRelay and RelayEMANE threads
+    // Set up sockets for each thread
   }
 
   void Relay::doStart()
   {
     std::cout<<"Doing start"<<std::endl;
-
-    // Start rx and tx thread relaying
+    std::cout<<"Log Level: "<<LOG->level_<<std::endl;
+    // Start ARGoSRelay and RelayEMANE threads
   }
 
   void Relay::doStop()

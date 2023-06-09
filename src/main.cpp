@@ -2,16 +2,29 @@
 #include <unistd.h>
 
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include "relay.hpp"
+#include "logger.hpp"
 
 namespace {
   const std::string VERSION{"v0.0.1"};
 
   void usage()
   {
-    std::cout<<"EMANE-Relay Usage"<<std::endl;
+    std::cout<<"usage: emanerelayd [OPTIONS]... NEM_ID"<<std::endl;
+    std::cout<<std::endl;
+    std::cout<<" NEM_ID                          ID number assigned to EMANE NEM"<<std::endl;
+    std::cout<<std::endl;
+    std::cout<<"options:"<<std::endl;
+    std::cout<<"  -d, --daemonize                Run in the background."<<std::endl;
+    std::cout<<"  -h, --help                     Print this message and exit."<<std::endl;
+    std::cout<<"  -f, --logfile FILE             Log to a file instead of stdout."<<std::endl;
+    std::cout<<"  -l, --loglevel [0,4]           Set initial log level."<<std::endl;
+    std::cout<<"                                  default: 2"<<std::endl;
+    std::cout<<"  --pidfile FILE                 Write application pid to file."<<std::endl;
+    std::cout<<"  -v, --version                  Print version and exit."<<std::endl;
     std::cout<<std::endl;
   }
 }
@@ -26,7 +39,6 @@ int main(int argc, char * argv[]) {
   // -f, --logfile FILE
   // -l, --loglevel [0,4]
   // -d, --daemonize
-  std::cout<<"Initialzing EMANE Relay for ARGoS"<<std::endl;
 
   std::vector<option> options = 
   {
@@ -47,6 +59,7 @@ int main(int argc, char * argv[]) {
   int iLogLevel{};
   std::string sLogFile{};
   std::string sPIDFile{};
+  emane_relay::NEMId id{};
 
   while((iOption = getopt_long(argc, argv, sOptString.c_str(), &options[0], &iOptionIndex)) != -1)
   {
@@ -57,9 +70,22 @@ int main(int argc, char * argv[]) {
         return 0;
 
       case 'l':
-        // TODO: need to convert optarg to int (see EMANE::Utils::ParameterConvert)
-        std::cerr<<"loglevel: Not Yet Implemented"<<std::endl;
-        return EXIT_SUCCESS;
+        try // check log level is int
+        {
+          iLogLevel = std::stoi(optarg);
+        }
+        catch(...)
+        {
+          std::cerr<<"invalid log level: "<<optarg<<std::endl;
+          return EXIT_FAILURE;
+        }
+
+        if(iLogLevel > 4 || iLogLevel < 0) // check log level is [0,4]
+        {
+          std::cerr<<"invalid log level: "<<optarg<<std::endl;
+          return EXIT_FAILURE;
+        }
+        break;
 
       case 'f':
         sLogFile = optarg;
@@ -82,6 +108,17 @@ int main(int argc, char * argv[]) {
     }
   }
 
+  // Check if non-optional parameter exists
+  if(optind >= argc)
+  {
+    std::cerr<<"Missing NEM_ID"<<std::endl;
+    return EXIT_FAILURE;
+  }
+  else
+  {
+    id = std::stoi(argv[optind]);
+  }
+
   // Daemonize process
   if(bDaemonize)
   {
@@ -98,20 +135,23 @@ int main(int argc, char * argv[]) {
     }
   }
 
-  // TODO: Set up logfile / logger
+  // TODO: Set up logger and logfile
+  emane_relay::LOG = new emane_relay::Logger(iLogLevel);
   // TODO: Create PID File
 
+  /**********************************************************************************************/
+  /**********************************************************************************************/
 
   // Start main application
-  emane_relay::Relay * Application = new emane_relay::Relay();
+  emane_relay::Relay * application = new emane_relay::Relay(id);
 
-  Application->doInit();
-  Application->doStart();
+  application->doInit();
+  application->doStart();
 
   // NOTE: Application exit signal handlers here
 
-  Application->doStop();
-  Application->doDestroy();
+  application->doStop();
+  application->doDestroy();
 
   return EXIT_SUCCESS;
 }
