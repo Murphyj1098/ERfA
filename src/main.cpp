@@ -136,7 +136,6 @@ int main(int argc, char * argv[]) {
   }
 
   // TODO: Set up logger and logfile
-  emane_relay::LOG = new emane_relay::Logger(iLogLevel);
   // TODO: Create PID File
 
   /**********************************************************************************************/

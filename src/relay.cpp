@@ -2,8 +2,6 @@
 
 #include <iostream>
 
-#include "logger.hpp"
-
 namespace emane_relay {
 
   /**
@@ -29,7 +27,6 @@ namespace emane_relay {
   void Relay::doStart()
   {
     std::cout<<"Doing start"<<std::endl;
-    std::cout<<"Log Level: "<<LOG->level_<<std::endl;
     // Start ARGoSRelay and RelayEMANE threads
   }
 
