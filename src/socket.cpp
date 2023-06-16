@@ -1,6 +1,7 @@
 #include "socket.hpp"
 
 #include <fcntl.h>
+#include <iostream>
 
 namespace emane_relay {
 
@@ -9,7 +10,7 @@ namespace emane_relay {
    * 
    * @brief Socket service provider
    * 
-   * Socket class based on https://github.com/KMakowsky/Socket.cpp
+   * Socket class modified from <https://github.com/KMakowsky/Socket.cpp>
    */
   Socket::Socket():
     sock_(-1),
@@ -41,15 +42,17 @@ namespace emane_relay {
     return 0;
   }
 
-  int Socket::bind(const char* address, const char* port)
+  int Socket::bind(const std::string &address, const std::string &port)
   {
       // local socket
       if (addressInfo_.ai_family == AF_UNIX)
       {
+        sockAddr_ = address;
+
         struct sockaddr_un addr;
         memset(&addr, 0, sizeof(addr));
         addr.sun_family = AF_UNIX;
-        strncpy(addr.sun_path, address, sizeof(addr.sun_path)-1);
+        strncpy(addr.sun_path, address.c_str(), sizeof(addr.sun_path)-1);
 
         // bind socket using provided path
         if ((::bind(sock_, (struct sockaddr*)&addr, sizeof(addr))) < 0)
@@ -62,12 +65,12 @@ namespace emane_relay {
         return 0;
       }
 
-      sockAddr_ = address;
-      sockPort_ = port;
+      sockAddr_ = address.c_str();
+      sockPort_ = port.c_str();
 
       struct addrinfo *res;
       addressInfo_.ai_flags = AI_PASSIVE;
-      if((getaddrinfo(address, port, &addressInfo_, &res)) < 0)
+      if((getaddrinfo(address.c_str(), port.c_str(), &addressInfo_, &res)) < 0)
       {
         // fail to bind
         return -1;
@@ -87,7 +90,7 @@ namespace emane_relay {
     return 0;
   }
 
-  int Socket::connect(const char* address, const char* port)
+  int Socket::connect(const std::string& address, const std::string& port)
   {
     // local socket
     if (addressInfo_.ai_family == AF_UNIX)
@@ -95,7 +98,7 @@ namespace emane_relay {
       struct sockaddr_un addr;
       memset(&addr, 0, sizeof(addr));
       addr.sun_family = AF_UNIX;
-      strncpy(addr.sun_path, address, sizeof(addr.sun_path)-1);
+      strncpy(addr.sun_path, address.c_str(), sizeof(addr.sun_path)-1);
 
       // connect socket using provided path
       if ((::connect(sock_, (struct sockaddr*)&addr, sizeof(addr))) < 0)
@@ -108,11 +111,11 @@ namespace emane_relay {
       return 0;
     }
 
-    sockAddr_ = address;
-    sockPort_ = port;
+    sockAddr_ = address.c_str();
+    sockPort_ = port.c_str();
 
     struct addrinfo *res;
-    if((getaddrinfo(address, port, &addressInfo_, &res)) < 0)
+    if((getaddrinfo(address.c_str(), port.c_str(), &addressInfo_, &res)) < 0)
     {
       // fail to connect
       return -1;
@@ -254,6 +257,14 @@ namespace emane_relay {
   int Socket::close()
   {
     ::close(sock_);
+
+    // Remember to unlink from file system socket
+    // see <https://man7.org/linux/man-pages/man7/unix.7.html#NOTES>
+    if (addressInfo_.ai_family == AF_UNIX)
+    {
+      ::unlink(sockAddr_.c_str());
+    }
+
     return 0;
   }
 }

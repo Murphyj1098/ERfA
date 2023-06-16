@@ -38,7 +38,7 @@ namespace emane_relay{
        * 
        * @return 0 on success, -1 on error
        */
-      int bind(const char* address, const char* port);
+      int bind(const std::string &address, const std::string &port);
 
       /**
        * Client socket connect to server
@@ -48,7 +48,7 @@ namespace emane_relay{
        * 
        * @return 0 on success, -1 on error
        */
-      int connect(const char* address, const char* port);
+      int connect(const std::string &address, const std::string &port);
 
       /**
        * Server socket listen for incoming connections

@@ -10,6 +10,11 @@ namespace emane_relay {
   typedef unsigned int    uint32_t;
   typedef unsigned long   uint64_t;
 
+  typedef signed char     sint8_t;
+  typedef signed short    sint16_t;
+  typedef signed int      sint32_t;
+  typedef signed long     sint64_t;
+
   typedef unsigned int    NEMId;
 
   typedef int             pid_t;

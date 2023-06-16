@@ -1,12 +1,13 @@
 #include <getopt.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <vector>
 
 #include "relay.hpp"
-#include "logger.hpp"
 
 namespace {
   const std::string VERSION{"v0.0.1"};
@@ -27,12 +28,19 @@ namespace {
     std::cout<<"  -v, --version                  Print version and exit."<<std::endl;
     std::cout<<std::endl;
   }
+
+  std::mutex mutex{};
+
+  void sighandler(int)
+  {
+    mutex.unlock();
+  }
 }
 
 int main(int argc, char * argv[]) {
   // Parse startup arguments
   // required args:
-  // EMANE NEM ID (???: derive from ${node-name})
+  // EMANE NEM ID
 
   // optional args:
   // --pidfile FILE
@@ -147,7 +155,14 @@ int main(int argc, char * argv[]) {
   application->doInit();
   application->doStart();
 
-  // NOTE: Application exit signal handlers here
+  // Handle ending program (based on emane programs)
+  struct sigaction action;
+  memset(&action, 0, sizeof(action));
+  action.sa_handler = sighandler;
+  sigaction(SIGINT,&action,nullptr);
+  sigaction(SIGQUIT,&action,nullptr);
+  mutex.lock();
+  mutex.lock(); // Signal handler unlocks mutex
 
   application->doStop();
   application->doDestroy();
