@@ -74,7 +74,7 @@ namespace emane_relay{
        * 
        * @return number of bytes received, -1 on error
        */
-      int read_socket(char &buf, int len);
+      int read_socket(uint8_t* buf, int len);
 
       /**
        * Write data to socket
@@ -83,7 +83,7 @@ namespace emane_relay{
        * 
        * @return number of bytes sent, -1 on error
        */
-      int write_socket(const char* msg);
+      int write_socket(const uint8_t* msg);
 
       /**
        * Set socket into blocking mode

@@ -39,6 +39,14 @@ namespace emane_relay {
     double    alt;
   };
 
+  struct SPreamble
+  {
+    uint32_t timestamp;
+    uint16_t src;
+    uint16_t dst;
+    uint16_t payloadSize;
+  };
+
   struct SMessage
   {
     /**

@@ -1,5 +1,6 @@
 #include "socket.hpp"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <iostream>
 
@@ -185,16 +186,15 @@ namespace emane_relay {
     return newSocket;
   }
 
-  int Socket::read_socket(char &buf, int len)
+  int Socket::read_socket(uint8_t* buf, int len)
   {
-    char buffer[len];
-    bzero(buffer, len);
 
-    int bRecv = (int)recv(sock_, buffer, len-1, 0);
+    ssize_t bRecv = recv(sock_, buf, len, 0);
 
     if(bRecv < 0)
     {
       // fail to recv
+      std::cerr<<"Read Error: "<<strerror(errno)<<" Got: "<<bRecv<<std::endl;
       return -1;
     }
 
@@ -202,9 +202,9 @@ namespace emane_relay {
     return bRecv;
   }
 
-  int Socket::write_socket(const char* msg)
+  int Socket::write_socket(const uint8_t* msg)
   {
-    int len = (int)strlen(msg);
+    int len = sizeof(msg);
 
     if(((int)send(sock_, msg, len, 0)) < 0)
     {

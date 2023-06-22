@@ -3,6 +3,8 @@
 
 #include "types.hpp"
 
+#include <mutex>
+#include <queue>
 #include <thread>
 
 #include "socket.hpp"
@@ -28,23 +30,41 @@ namespace emane_relay {
     private:
       std::string sockAddr_;
       std::string emane0Addr_;
-      std::thread argosThread_;
-      std::thread emaneThread_;
+      std::thread toARGoSThread_;
+      std::thread fromARGoSThread_;
+      std::thread toEMANEThread_;
+      std::thread fromEMANEThread_;
+      std::mutex argosQueueLock_;
+      std::mutex emaneQueueLock_;
+      std::queue<SMessage> argosQueue_; // From ARGoS
+      std::queue<SMessage> emaneQueue_; // From EMANE
       NEMId id_;
       Socket * pARGoSSock_;
       Socket * pEMANESock_;
 
       /**
-       * @brief Relay data from NEM to ARGoS
+       * @brief Relay data from rx queue to ARGoS
        * 
        */
       void toARGoS();
 
       /**
-       * @brief Relay data from ARGoS to NEM
+       * @brief Relay data from ARGoS to tx queue
+       * 
+       */
+      void fromARGoS();
+
+      /**
+       * @brief Relay data from tx queue to NEM
        * 
        */
       void toEMANE();
+
+      /**
+       * @brief Relay data from NEM to rx queue
+       * 
+       */
+      void fromEMANE();
   };
 
 }
