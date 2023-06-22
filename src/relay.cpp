@@ -66,7 +66,8 @@ namespace emane_relay {
       std::cerr<<"Failed to set EMANE-side rx socket to blocking for NEM-"<<id_<<std::endl;
     }
 
-    if((pEMANESock_->bind("127.0.0.1", EMANE_SOCK_PORT)) < 0) // TODO: Change this address?
+    emane0Addr_ = "10.100.0." + std::to_string(id_);
+    if((pEMANESock_->bind(emane0Addr_, EMANE_SOCK_PORT)) < 0)
     {
       std::cerr<<"Failed to bind EMANE-side rx socket for NEM-"<<id_<<std::endl;
     }
