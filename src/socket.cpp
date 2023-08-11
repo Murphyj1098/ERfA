@@ -50,6 +50,7 @@ namespace emane_relay {
       {
         sockAddr_ = address;
 
+        ::unlink(sockAddr_.c_str());
         struct sockaddr_un addr;
         memset(&addr, 0, sizeof(addr));
         addr.sun_family = AF_UNIX;

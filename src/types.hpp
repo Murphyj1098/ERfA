@@ -54,11 +54,27 @@ namespace emane_relay {
      * 
      * Member payload is dynamically sized vector
      */
-    inline uint64_t CalculateBufferSize() {
-      uint64_t uBufferSize = sizeof(*this);
-      uBufferSize += payload.size();
-      return uBufferSize;
-    }
+      inline size_t CalculateBufferSize() {
+         size_t unBufferSize = 0;
+         // Calculate the size for the fixed-size members
+         unBufferSize += sizeof(timestamp);
+         unBufferSize += sizeof(src);
+         unBufferSize += sizeof(dst);
+         unBufferSize += sizeof(payloadSize);
+         // Calculate the size for the variable-length member
+         unBufferSize += payload.size();
+         return unBufferSize;
+      }
+
+      /**
+       * 
+       */
+      inline void CopyPreamble(SPreamble preamble) {
+        timestamp = preamble.timestamp;
+        src = preamble.src;
+        dst = preamble.dst;
+        payloadSize = preamble.payloadSize;
+      }
 
     uint32_t timestamp;
     uint16_t src;

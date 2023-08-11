@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "relay.hpp"
+#include "types.hpp"
 
 namespace {
   const std::string VERSION{"v0.0.1"};

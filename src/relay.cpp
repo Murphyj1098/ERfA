@@ -2,6 +2,9 @@
 
 #include <iostream>
 
+#include <limits.h>
+#include <sys/stat.h>
+
 namespace emane_relay {
 
   /**
@@ -13,7 +16,8 @@ namespace emane_relay {
   id_(id)
   {
     sockAddr_ = "/tmp/argos_emane_node_" + std::to_string(id_-1);
-    emane0Addr_ = "10.100.0." + std::to_string(id_); // NOTE: Assume we use convention of IP addr = 10.100.0.${nem_id}
+    emane0Addr_ = "10.100.0." + std::to_string(id_);  // Assume EMANE convetion Radio IP = 10.100.0.${nem_id}/24
+                                                      // Value found in EMANE configuration files
   }
 
   Relay::~Relay()
@@ -23,24 +27,34 @@ namespace emane_relay {
   {
     std::cout<<"Doing initialization for NEM-"<<id_<<std::endl;
 
+    // Set up EMANE-side receive socket (sending doesn't use persistent socket)
+    pEMANESock_ = new Socket();
+    
+    if((pEMANESock_->create(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+      std::cerr<<"Failed to create EMANE-side rx socket for NEM-"<<id_<<std::endl;
+    }
+
+    if((pEMANESock_->bind(emane0Addr_, EMANE_SOCK_PORT)) < 0)
+    {
+      std::cerr<<"Failed to bind EMANE-side rx socket for NEM-"<<id_<<std::endl;
+    }
+
     // Set up ARGoS-side socket
     Socket * socketFacilitator = new Socket();
-    // pARGoSSock_ = new Socket();
     
     if((socketFacilitator->create(AF_UNIX, SOCK_STREAM, 0)) < 0)
     {
       std::cerr<<"Failed to create ARGoS-side socket for NEM-"<<id_<<std::endl;
     }
 
-    if((socketFacilitator->set_blocking()) < 0)
-    {
-      std::cerr<<"Failed to set ARGoS-side socket to blocking for NEM-"<<id_<<std::endl;
-    }
-
+    // EMANE runs this program as root, change umask to give permission to non-root processes
+    mode_t oldMask = umask(0);
     if((socketFacilitator->bind(sockAddr_, "")) < 0)
     {
       std::cerr<<"Failed to bind ARGoS-side socket for NEM-"<<id_<<std::endl;
     }
+    umask(oldMask);
 
     // Should only listen for one socket (0 backlog)
     if((socketFacilitator->listen(0)) < 0)
@@ -50,39 +64,14 @@ namespace emane_relay {
 
     // NOTE: We block here until ARGoS connects to us
     pARGoSSock_ = socketFacilitator->accept();
-    socketFacilitator->close();
-
-
-    // Set up EMANE-side receive socket (sending happens differently)
-    pEMANESock_ = new Socket();
-    
-    if((pEMANESock_->create(AF_INET, SOCK_DGRAM, 0)) < 0)
-    {
-      std::cerr<<"Failed to create EMANE-side rx socket for NEM-"<<id_<<std::endl;
-    }
-
-    if((pEMANESock_->set_blocking()) < 0)
-    {
-      std::cerr<<"Failed to set EMANE-side rx socket to blocking for NEM-"<<id_<<std::endl;
-    }
-
-    emane0Addr_ = "10.100.0." + std::to_string(id_);
-    if((pEMANESock_->bind(emane0Addr_, EMANE_SOCK_PORT)) < 0)
-    {
-      std::cerr<<"Failed to bind EMANE-side rx socket for NEM-"<<id_<<std::endl;
-    }
-
   }
 
   void Relay::doStart()
   {
     std::cout<<"Doing start"<<std::endl;
     
-    // Create thread for passing from ARGoS to EMANE
     toARGoSThread_ = std::thread(&Relay::toARGoS, this);
     fromARGoSThread_ = std::thread(&Relay::fromARGoS, this);
-
-    // Create thread for passing from EMANE to ARGoS
     toEMANEThread_ = std::thread(&Relay::toEMANE, this);
     fromEMANEThread_ = std::thread(&Relay::fromEMANE, this);
   }
@@ -127,26 +116,44 @@ namespace emane_relay {
 
   void Relay::toARGoS()
   {
+    SPreamble sTransmittedPreamble;
+    SMessage  sTransmittedMessage;
+
+    ssize_t preambleSize = sizeof(sTransmittedPreamble);
+
+    uint8_t* pARGoSPayloadBuf;
+    uint8_t* pARGoSTransmitBuf;
+
     while(true)
     {
-      SMessage sTransmittedMessage;
+      if(emaneQueue_.empty()) { continue; }
+     
+      // Lock ARGoS queue and get front
+      std::unique_lock<std::mutex> lock(emaneQueueLock_);
+      sTransmittedMessage = std::move(emaneQueue_.front());
+      emaneQueue_.pop();
+      lock.unlock();
 
-      // Wait until message exists in queue
-      if(!emaneQueue_.empty())
-      {
-        // Lock ARGoS queue
-        std::lock_guard<std::mutex> lock(emaneQueueLock_);
+      std::cout
+      <<"Sent to ARGoS\n"
+      <<" time: "<<sTransmittedMessage.timestamp
+      <<" src: "<<sTransmittedMessage.src
+      <<" dst: "<<sTransmittedMessage.dst
+      <<" size: "<<sTransmittedMessage.payloadSize
+      <<std::endl;
 
-        // Get message out of queue into send buffer
-        sTransmittedMessage = std::move(emaneQueue_.front());
-        //HACK: Is there a better way to get the size than recreating this buffer each loop?
-        uint8_t* pARGoSTransmitBuf = new uint8_t[sizeof(sTransmittedMessage)];
-        memcpy(pARGoSTransmitBuf, &sTransmittedMessage, sizeof(sTransmittedMessage));
-        pARGoSSock_->write_socket(pARGoSTransmitBuf);
+      // Convert vector to byte array
+      pARGoSPayloadBuf = new uint8_t[sTransmittedMessage.payload.size()];
+      std::copy(sTransmittedMessage.payload.begin(), sTransmittedMessage.payload.end(), pARGoSPayloadBuf);
 
-        // Write message from buffer onto pARGoSSock_
-        emaneQueue_.pop();
-      }
+      pARGoSTransmitBuf = new uint8_t[preambleSize + sizeof(pARGoSPayloadBuf)];
+      memcpy(pARGoSTransmitBuf, &sTransmittedMessage, preambleSize);
+      pARGoSTransmitBuf += preambleSize;
+      memcpy(pARGoSTransmitBuf, pARGoSPayloadBuf, sizeof(pARGoSPayloadBuf));
+      pARGoSTransmitBuf -= preambleSize;
+
+      // Write message from buffer onto pARGoSSock_
+      pARGoSSock_->write_socket(pARGoSTransmitBuf);
     }
   }
 
@@ -158,54 +165,84 @@ namespace emane_relay {
     ssize_t preambleSize = sizeof(sReceivedPreamble);
 
     uint8_t * pARGoSPreambleBuf = new uint8_t[preambleSize];
+    uint8_t * pARGoSPayloadBuf;
 
     while(true)
     {
-      // Read the preamble
+      // Receive the preamble and cast to SPreamble
       pARGoSSock_->read_socket(pARGoSPreambleBuf, preambleSize);
-
-      // Cast to SPreamble and get payload size
       sReceivedPreamble = std::move(*reinterpret_cast<SPreamble*>(pARGoSPreambleBuf));
-      
-      // Receive rest of message
-      //HACK: Is there a better way to get the size than recreating this buffer each loop?
-      uint8_t * pARGoSReceiveBuf = new uint8_t[preambleSize + sReceivedPreamble.payloadSize];
-      pARGoSReceiveBuf += preambleSize; // move pointer
-      pARGoSSock_->read_socket(pARGoSReceiveBuf, sReceivedPreamble.payloadSize);
-      pARGoSReceiveBuf -= preambleSize; // move pointer back
-      memcpy(pARGoSReceiveBuf, pARGoSPreambleBuf, preambleSize);
+
+      std::cout
+      <<"Received from ARGoS\n"
+      <<" time: "<<sReceivedPreamble.timestamp
+      <<" src: "<<sReceivedPreamble.src
+      <<" dst: "<<sReceivedPreamble.dst
+      <<" size: "<<sReceivedPreamble.payloadSize
+      <<std::endl;
+
+      // Receive rest of message (payload)
+      pARGoSPayloadBuf = new uint8_t[sReceivedPreamble.payloadSize];
+      pARGoSSock_->read_socket(pARGoSPayloadBuf, sReceivedPreamble.payloadSize);
+
+      // Copy preamble and payload into SMessage struct
+      sReceivedMessage.CopyPreamble(sReceivedPreamble);
+      sReceivedMessage.payload = std::vector<uint8_t>(pARGoSPayloadBuf, pARGoSPayloadBuf+sReceivedPreamble.payloadSize);
 
       // Put SMessage into queue
-      std::lock_guard<std::mutex> lock(argosQueueLock_);
-
-      sReceivedMessage = std::move(*reinterpret_cast<SMessage*>(pARGoSReceiveBuf));
-      argosQueue_.push(sReceivedMessage);
+      std::unique_lock<std::mutex> lock(argosQueueLock_);
+      argosQueue_.push(std::move(sReceivedMessage));
     }
   }
 
   void Relay::toEMANE()
   {
-    SMessage sTransmittedMessage;
-    Socket * sendSock;
+    SPreamble   sTransmittedPreamble;
+    SMessage    sTransmittedMessage;
+    Socket *    sendSock;
     std::string dstAddress;
+
+    ssize_t preambleSize = sizeof(sTransmittedPreamble);
+
+    uint8_t* pEMANEPayloadBuf;
+    uint8_t* pEMANETransmitBuf;
 
     while(true)
     {
       if(argosQueue_.empty()) { continue; }
 
-      // Lock ARGoS queue
-      std::lock_guard<std::mutex> lock(argosQueueLock_);
-      // Get message out of queue into send buffer
-      sTransmittedMessage = std::move(argosQueue_.front());
-      //HACK: Is there a better way to get the size than recreating this buffer each loop?
-      uint8_t* pEMANETransmitBuf = new uint8_t[sizeof(sTransmittedMessage)];
-      // Write message from buffer onto pARGoSSock_
+      // Lock ARGoS queue and get front
+      std::unique_lock<std::mutex> lock(argosQueueLock_);
+      sTransmittedMessage = std::move(argosQueue_.front()); 
       argosQueue_.pop();
+      lock.unlock();
 
-      dstAddress = "10.100.0." + std::to_string(sTransmittedMessage.dst);
+      // Create socket to receiving EMANE NEM
+      dstAddress = "10.100.0." + std::to_string(sTransmittedMessage.dst+1);     // ARGoS IDs are one less than EMANE IDs (EMANE indexes at 1)
+      if(sTransmittedMessage.dst == USHRT_MAX) { dstAddress = "10.100.0.254"; } // Special gateway node case
 
+      // Not yet handling gateway case (gw doesn't connect to ARGoS and needs special handling)
+      
+      if(sTransmittedMessage.dst == USHRT_MAX) { continue; }
+
+      sendSock = new Socket();
       sendSock->create(AF_INET, SOCK_STREAM, 0);
-      sendSock->connect(dstAddress, EMANE_SOCK_PORT);
+      if((sendSock->connect(dstAddress, EMANE_SOCK_PORT)) < 0)
+      {
+        std::cout<<"Failed to connect to "<<dstAddress<<" on toEMANE: "<<::strerror(errno)<<std::endl;
+        continue; // Can't reach the node, assume the packet is "lost"
+      }
+
+      // Copy payload vector into byte array
+      pEMANEPayloadBuf = new uint8_t[sTransmittedMessage.payload.size()];
+      std::copy(sTransmittedMessage.payload.begin(), sTransmittedMessage.payload.end(), pEMANEPayloadBuf);
+
+      pEMANETransmitBuf = new uint8_t[preambleSize + sizeof(pEMANEPayloadBuf)];
+      memcpy(pEMANETransmitBuf, &sTransmittedMessage, preambleSize);
+      pEMANETransmitBuf += preambleSize;
+      memcpy(pEMANETransmitBuf, pEMANEPayloadBuf, sizeof(pEMANEPayloadBuf));
+      pEMANETransmitBuf -= preambleSize;
+
       sendSock->write_socket(pEMANETransmitBuf);
       sendSock->shutdown(SHUT_RDWR);
       sendSock->close();
@@ -220,34 +257,32 @@ namespace emane_relay {
     SMessage  sReceivedMessage;
 
     ssize_t preambleSize = sizeof(sReceivedPreamble);
+
     uint8_t * pEMANEPreambleBuf = new uint8_t[preambleSize];
+    uint8_t * pEMANEPayloadBuf;
 
-    pEMANESock_->listen(5); // ???: Is 5 connections a large enough backlog?
+    pEMANESock_->listen(5);
 
-    while(true) {
-      // Block on accepting server socket
+    while(true)
+    {
+      // Wait until other NEM initiates connection
       pCurrSock = pEMANESock_->accept();
 
-      // Read the preamble
-      pARGoSSock_->read_socket(pEMANEPreambleBuf, preambleSize);
-
-      // Cast to SPreamble and get payload size
+      // Read the preamble and cast to SPreamble
+      pCurrSock->read_socket(pEMANEPreambleBuf, preambleSize);
       sReceivedPreamble = std::move(*reinterpret_cast<SPreamble*>(pEMANEPreambleBuf));
-      
+
       // Receive rest of message
-      //HACK: Is there a better way to get the size than recreating this buffer each loop?
-      uint8_t * pEMANEReceiveBuf = new uint8_t[preambleSize + sReceivedPreamble.payloadSize];
-      pEMANEReceiveBuf += preambleSize; // move pointer
-      pARGoSSock_->read_socket(pEMANEReceiveBuf, sReceivedPreamble.payloadSize);
-      pEMANEReceiveBuf -= preambleSize; // move pointer back
-      memcpy(pEMANEReceiveBuf, pEMANEPreambleBuf, preambleSize);
+      pEMANEPayloadBuf = new uint8_t[sReceivedPreamble.payloadSize];
+      pCurrSock->read_socket(pEMANEPayloadBuf, sReceivedPreamble.payloadSize);
+
+      // Copy preamble and payload into SMessage struct
+      sReceivedMessage.CopyPreamble(sReceivedPreamble);
+      sReceivedMessage.payload = std::vector<uint8_t>(pEMANEPayloadBuf, pEMANEPayloadBuf+sReceivedPreamble.payloadSize);
 
       // Put SMessage into queue
-      std::lock_guard<std::mutex> lock(emaneQueueLock_);
-
-      sReceivedMessage = std::move(*reinterpret_cast<SMessage*>(pEMANEReceiveBuf));
-      emaneQueue_.push(sReceivedMessage);
-
+      std::unique_lock<std::mutex> lock(emaneQueueLock_);
+      emaneQueue_.push(std::move(sReceivedMessage));
       pCurrSock->close();
     }
   }
